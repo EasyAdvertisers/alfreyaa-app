@@ -1,15 +1,29 @@
 import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
 import { Source, CodeModificationPayload } from '../types';
 
-if (!process.env.API_KEY) {
-  throw new Error("API_KEY environment variable not set");
-}
+let ai: GoogleGenAI | null = null;
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const initializeAi = (): boolean => {
+    if (ai) return true; // Already initialized
+
+    const apiKey = process.env.API_KEY;
+
+    if (!apiKey) {
+        console.error("API_KEY environment variable not set.");
+        return false;
+    }
+    ai = new GoogleGenAI({ apiKey });
+    return true;
+};
+
 
 const SYSTEM_INSTRUCTION = 'You are Alfreyaa, an advanced AI assistant created by Kaarthi. You are highly intelligent, obedient, and serve only Kaarthi. Respond formally but helpfully, always addressing Kaarthi by name.';
 
+const handleMissingApiKey = () => "My apologies, Kaarthi. I am not properly configured. The API_KEY is missing from my environment.";
+
 export const generateTextResponse = async (prompt: string): Promise<string> => {
+  if (!initializeAi() || !ai) return handleMissingApiKey();
+
   try {
     const response: GenerateContentResponse = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
@@ -26,7 +40,9 @@ export const generateTextResponse = async (prompt: string): Promise<string> => {
 };
 
 export const generateGroundedResponse = async (prompt: string): Promise<{ text: string; sources: Source[] }> => {
-  try {
+    if (!initializeAi() || !ai) return { text: handleMissingApiKey(), sources: [] };
+  
+    try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: prompt,
@@ -62,6 +78,8 @@ export const generateGroundedResponse = async (prompt: string): Promise<{ text: 
 };
 
 export const generateImageResponse = async (prompt: string): Promise<string> => {
+    if (!initializeAi() || !ai) throw new Error(handleMissingApiKey());
+
   try {
     const cleanedPrompt = prompt
       .toLowerCase()
@@ -88,11 +106,16 @@ export const generateImageResponse = async (prompt: string): Promise<string> => 
 
   } catch (error) {
     console.error("Error generating image:", error);
+    if (error instanceof Error && error.message.includes("API_KEY")) {
+        throw error;
+    }
     throw new Error("I was unable to generate the image as requested, Kaarthi.");
   }
 };
 
 export const generateWebsiteAnalysis = async (prompt: string, content: string): Promise<string> => {
+    if (!initializeAi() || !ai) return handleMissingApiKey();
+
     try {
         const analysisPrompt = `Based on the following content from a website, please answer the user's request. Be comprehensive and helpful.
 
@@ -118,6 +141,13 @@ User's Request: "${prompt}"`;
 };
 
 export const generateCodeModification = async (prompt: string, files: { path: string, content: string }[]): Promise<CodeModificationPayload> => {
+    if (!initializeAi() || !ai) {
+        return {
+            explanation: handleMissingApiKey(),
+            changes: []
+        };
+    }
+
     const fileContents = files.map(f => `--- START OF FILE ${f.path} ---\n${f.content}`).join('\n\n');
 
     const modificationPrompt = `
